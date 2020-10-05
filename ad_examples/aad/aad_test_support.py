@@ -113,7 +113,7 @@ def aad_unit_tests_battery(X_train, labels, model, metrics, opts,
         plot_query_diversity(X_train, labels, X_train_new, model, metrics, outputdir, opts)
 
     if output_forest_original:
-        n_found = evaluate_forest_original(X_train, labels, opts.budget, model, x_new=X_train_new)
+        n_found, _ = evaluate_forest_original(X_train, labels, opts.budget, model, x_new=X_train_new)
         np.savetxt(os.path.join(outputdir, "iforest_original_num_found_%s.csv" % dataset_name),
                    n_found, fmt='%3.2f', delimiter=",")
 
@@ -297,7 +297,7 @@ def evaluate_forest_original(x, y, budget, forest, x_new=None):
         n_found = np.vstack((n_found_baseline, n_found_orig)).T
     else:
         n_found = np.reshape(n_found_orig, (1, len(n_found_orig)))
-    return n_found
+    return n_found, original_scores
 
 
 def plot_model_baseline_contours_2D(x, y, x_transformed, xx, yy, budget, model,

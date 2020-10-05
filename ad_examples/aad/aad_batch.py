@@ -1,6 +1,7 @@
 import os
 import logging
 import numpy as np
+import sklearn as sk
 
 from ..common.utils import configure_logger, read_data_as_matrix, Timer, rbind
 from ..common.expressions import save_strings_to_file
@@ -114,6 +115,8 @@ def aad_batch():
     # X_train = X_train[0:10, :]
     # labels = labels[0:10]
 
+    datafile_name = os.path.basename(opts.datafile).rsplit('.', 1)[0]
+
     logger.debug("loaded file: %s" % opts.datafile)
     logger.debug("results dir: %s" % opts.resultsdir)
     logger.debug("detector_type: %s" % detector_types[opts.detector_type])
@@ -151,12 +154,23 @@ def aad_batch():
 
             if is_forest_detector(opts.detector_type) and \
                     opts.forest_score_type == ORIG_TREE_SCORE_TYPE:
-                orig_num_seen = evaluate_forest_original(X_train, labels, opts.budget, model, x_new=None)
+                orig_num_seen, baseline_scores = evaluate_forest_original(X_train, labels, opts.budget, model, x_new=None)
                 tmp = np.zeros((1, 2+orig_num_seen.shape[1]), dtype=orig_num_seen.dtype)
                 tmp[0, 0:2] = [opts.fid, runidx]
                 tmp[0, 2:tmp.shape[1]] = orig_num_seen[0, :]
                 all_orig_num_seen = rbind(all_orig_num_seen, tmp)
                 logger.debug(tm_run.message("Original detector runidx: %d" % runidx))
+
+                # Baseline scores
+                all_scores = np.vstack([baseline_scores] * (opts.budget + 1))
+                all_scores_file = os.path.join(opts.resultsdir, "all_scores-%s#%d.csv" % (datafile_name, runidx))
+                np.savetxt(all_scores_file, all_scores, delimiter=',')
+                logger.debug("All scores stored at %s" % all_scores_file)
+
+                queried = np.argsort(-baseline_scores)[np.arange(opts.budget)]
+                queried_file = os.path.join(opts.resultsdir, "queried_instances-%s#%d.csv" % (datafile_name, runidx))
+                np.savetxt(queried_file, queried, fmt="%d", delimiter=",")
+                logger.debug("Queried instances stored at %s" % queried_file)
                 continue
 
             if is_forest_detector(opts.detector_type):
@@ -199,6 +213,15 @@ def aad_batch():
                 all_queried_indexes_baseline = rbind(all_queried_indexes_baseline, queried_indexes_baseline)
                 logger.debug("baseline: \n%s" % str([v for v in num_seen_baseline[0, :]]))
                 logger.debug("num_seen: \n%s" % str([v for v in num_seen[0, :]]))
+
+                # Write additional output files
+                all_scores_file = os.path.join(opts.resultsdir, "all_scores-%s#%d.csv" % (datafile_name, runidx))
+                np.savetxt(all_scores_file, metrics.all_scores, delimiter=',')
+                logger.debug("All scores stored at %s" % all_scores_file)
+
+                queried_file = os.path.join(opts.resultsdir, "queried_instances-%s#%d.csv" % (datafile_name, runidx))
+                np.savetxt(queried_file, metrics.queried, fmt="%d", delimiter=",")
+                logger.debug("Queried instances stored at %s" % queried_file)
 
                 if False:
                     debug_qvals(X_train_new, model, metrics, args.resultsdir, opts)

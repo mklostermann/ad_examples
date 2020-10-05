@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 from ..common.utils import (
     order, quantile, normalize, matrix, nrow, sample, append, timer, difftime, get_random_item, logger
@@ -75,7 +76,7 @@ def estimate_qtau(samples, model, opts, lo=-1.0, hi=1.0):
 class MetricsStructure(object):
     def __init__(self, train_aucs=None, test_aucs=None, train_precs=None, test_precs=None,
                  train_aprs=None, test_aprs=None, train_n_at_top=None, test_n_at_top=None,
-                 all_weights=None, queried=None):
+                 all_weights=None, queried=None, all_scores=None):
         self.train_aucs = train_aucs
         self.test_aucs = test_aucs
         self.train_precs = train_precs
@@ -87,9 +88,10 @@ class MetricsStructure(object):
         self.all_weights = all_weights
         self.queried = queried
         self.test_indexes = []
+        self.all_scores = all_scores # Stores all scores (all feedback loops); scores before using feedback at index zero
 
 
-def get_aad_metrics_structure(budget, opts):
+def get_aad_metrics_structure(n, budget, opts):
     metrics = MetricsStructure(
         train_aucs=np.zeros(shape=(1, budget)),
         # for precision@k first two columns are fid,k
@@ -97,7 +99,8 @@ def get_aad_metrics_structure(budget, opts):
         train_aprs=np.zeros(shape=(1, budget)),
         train_n_at_top=[],
         all_weights=[],
-        queried=[]
+        queried=[],
+        all_scores=np.zeros(shape=(budget + 1, n))
     )
     for k in range(len(opts.precision_k)):
         metrics.train_precs.append(np.zeros(shape=(1, budget)))
@@ -392,7 +395,7 @@ class Aad(object):
         n, m = x.shape
         bt = get_budget_topK(n, opts)
 
-        metrics = get_aad_metrics_structure(opts.budget, opts)
+        metrics = get_aad_metrics_structure(n, opts.budget, opts)
         ha = []
         hn = []
         xis = []
@@ -417,6 +420,7 @@ class Aad(object):
 
         i = 0
         feedback_iter = 0
+
         while len(xis) < bt.budget:
 
             starttime_iter = timer()
@@ -424,6 +428,7 @@ class Aad(object):
             metrics.queried = xis  # xis keeps growing with each feedback iteration
 
             order_anom_idxs, anom_score = self.order_by_score(x, self.w)
+            metrics.all_scores[i, :] = anom_score
 
             xi_ = qstate.get_next_query(maxpos=n, ordered_indexes=order_anom_idxs,
                                         queried_items=xis,
@@ -471,6 +476,7 @@ class Aad(object):
                 logger.debug("Completed [%s] fid %d rerun %d feedback %d in %f sec(s)" %
                              (opts.dataset, opts.fid, opts.runidx, i, tdiff))
 
+        metrics.all_scores[i, :] = self.get_score(x, self.w)
         return metrics
 
 
